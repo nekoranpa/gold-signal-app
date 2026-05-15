@@ -21,7 +21,8 @@ WATCH_CHANNEL_IDS = [int(x.strip()) for x in _ch_env.split(",") if x.strip().isd
 GOLD_KEYWORDS = [
     "gold", "ゴールド", "xau", "金", "buy", "sell",
     "short", "long", "ショート", "ロング", "エントリー",
-    "sl:", "tp:", "pips",
+    "sl:", "tp:", "pips", "milkay", "n-milkay",
+    "下落", "上昇", "下降",
 ]
 
 
@@ -30,7 +31,18 @@ def _is_gold_signal(text: str) -> bool:
     return any(kw in lower for kw in GOLD_KEYWORDS)
 
 
-def _analyze(discord_text: str) -> dict:
+def _detect_source_type(text: str) -> str:
+    lower = text.lower()
+    if "milkay5" in lower:
+        return "MILKAY5"
+    elif "n-milkay" in lower:
+        return "N-MILKAY"
+    elif "milkay" in lower:
+        return "MILKAY"
+    return "OTHER"
+
+
+def _analyze(discord_text: str, source_type: str = "OTHER") -> dict:
     """AI解析を実行して結果を返す"""
     import anthropic
     from utils.market_data import build_market_summary
@@ -38,6 +50,14 @@ def _analyze(discord_text: str) -> dict:
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return {"error": "ANTHROPIC_API_KEY が未設定です"}
+
+    # ソースに応じた時間足指定
+    if source_type == "MILKAY5":
+        timeframe_instruction = "【分析時間足】15分足 → 5分足 → 1分足の順で確認して判断してください。"
+        hold_seconds = 300
+    else:
+        timeframe_instruction = "【分析時間足】15分足 → 1分足の順で確認して判断してください。"
+        hold_seconds = 900
 
     # 相場データ取得
     try:
@@ -98,7 +118,15 @@ def _analyze(discord_text: str) -> dict:
                 learn_context += (f"- {d.get('direction','')} {d.get('pips','')}pips "
                                   f"{d.get('outcome','')} ({d.get('timestamp','')[:10]})\n")
 
-    user_msg = f"""【Discordシグナル】\n{discord_text}\n\n{market}\n{learn_context}\nJSONで回答してください。"""
+    user_msg = f"""【シグナルソース: {source_type}】
+{timeframe_instruction}
+
+【Discordシグナル】
+{discord_text}
+
+{market}
+{learn_context}
+JSONで回答してください。"""
 
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
@@ -114,7 +142,6 @@ def _analyze(discord_text: str) -> dict:
         raw = raw.split("```")[1].split("```")[0].strip()
 
     result = json.loads(raw)
-    # 後方互換: consensus の値をトップレベルにもコピー
     c = result.get("consensus", {})
     result["entry_decision"] = c.get("entry_decision", "WAIT")
     result["direction"]      = c.get("direction", "NEUTRAL")
@@ -124,6 +151,8 @@ def _analyze(discord_text: str) -> dict:
     result["confidence"]     = c.get("confidence", 0)
     result["reasoning"]      = c.get("reasoning", "")
     result["risk_note"]      = c.get("risk_note", "")
+    result["hold_seconds"]   = hold_seconds
+    result["source_type"]    = source_type
     return result
 
 
@@ -227,11 +256,12 @@ async def on_message(message):
     if not text or not _is_gold_signal(text):
         return
 
-    print(f"[Bot] シグナル検出: {text[:80]}")
+    source_type = _detect_source_type(text)
+    print(f"[Bot] シグナル検出 [{source_type}]: {text[:80]}")
     print("[Bot] AI解析開始...")
 
     try:
-        result = _analyze(text)
+        result = _analyze(text, source_type)
         _save_result(text, str(message.author), str(message.channel), result)
     except Exception as e:
         print(f"[Bot] 解析エラー: {e}")

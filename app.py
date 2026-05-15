@@ -72,14 +72,15 @@ st.set_page_config(
 st.markdown("""
 <script>
 (function() {
-  var HOLD_SECS  = 10;  // ENTRY表示の保持秒数
-  var POLL_SECS  = 5;   // 待機中のポーリング間隔
+  var POLL_SECS = 5;
+  var shownAt   = null;
 
-  var resultBox  = null;
-  var shownAt    = null;
+  function getHoldSecs() {
+    var el = document.getElementById('signal-hold-secs');
+    return el ? parseInt(el.dataset.secs || '300') : 300;
+  }
 
   function isEntry() {
-    // ページ内にENTRYバッジが存在するか確認
     return document.body.innerText.includes('エントリー');
   }
 
@@ -89,14 +90,11 @@ st.markdown("""
   }
 
   function tick() {
-    if (isTyping()) {
-      setTimeout(tick, 2000);
-      return;
-    }
+    if (isTyping()) { setTimeout(tick, 2000); return; }
     if (isEntry()) {
       if (!shownAt) shownAt = Date.now();
       var elapsed = (Date.now() - shownAt) / 1000;
-      if (elapsed >= HOLD_SECS) {
+      if (elapsed >= getHoldSecs()) {
         location.reload();
       } else {
         setTimeout(tick, 1000);
@@ -326,7 +324,13 @@ if data and "result" in data:
         risk      = r.get("risk_note", "")
         price_lv  = r.get("price_level")
 
-        passed = data.get("passed_filter", decision == "ENTRY" and conf >= 80)
+        passed       = data.get("passed_filter", decision == "ENTRY" and conf >= 80)
+        hold_secs    = r.get("hold_seconds", 300)
+        source_type  = r.get("source_type", data.get("channel", ""))
+
+        # 保持秒数を JS が読み取れる要素として埋め込む
+        st.markdown(f'<div id="signal-hold-secs" data-secs="{hold_secs}" style="display:none"></div>',
+                    unsafe_allow_html=True)
 
         if decision == "ENTRY" and direction == "SELL":
             bg, fg, emoji, label = "#1a0808", "#ff3333", "🔴", "SHORT エントリー"
@@ -349,6 +353,9 @@ if data and "result" in data:
             &nbsp;&nbsp;｜&nbsp;&nbsp;
             予想&nbsp;<span style="color:#f5c842;font-weight:700;">{pips:+.0f} pips</span>
             {"&nbsp;&nbsp;｜&nbsp;&nbsp;価格水準&nbsp;<span style='color:#fff;font-weight:700;'>$" + f"{price_lv:,.0f}" + "</span>" if price_lv else ""}
+          </div>
+          <div style="font-size:14px; color:#555; margin-top:10px;">
+            📡 {source_type}&nbsp;&nbsp;⏱ {hold_secs//60}分間表示
           </div>
         </div>""", unsafe_allow_html=True)
 
