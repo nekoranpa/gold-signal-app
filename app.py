@@ -6,7 +6,7 @@ from datetime import datetime
 import streamlit as st
 from dotenv import load_dotenv
 
-from utils.market_data import get_gold_price, get_gold_intraday
+from utils.market_data import get_gold_price
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
 
@@ -250,27 +250,6 @@ except Exception:
     st.markdown("<div style='text-align:center;color:#666;padding:8px'>価格取得中...</div>",
                 unsafe_allow_html=True)
 
-# ---- ミニチャート（1時間足） ----
-try:
-    import pandas as pd
-    intraday = get_gold_intraday()
-    candles = intraday.get("candles", [])
-    if candles:
-        df = pd.DataFrame(reversed(candles))
-        trend_color = "#00ff88" if intraday["trend"] == "上昇" else "#ff4444"
-        st.markdown(
-            f'<div style="display:flex; gap:24px; justify-content:center; '
-            f'font-family:sans-serif; font-size:13px; color:#888; margin-bottom:4px;">'
-            f'<span>直近トレンド: <b style="color:{trend_color}">{intraday["trend"]}</b></span>'
-            f'<span>高値: <b style="color:#fff">${intraday["recent_high"]:,.2f}</b></span>'
-            f'<span>安値: <b style="color:#fff">${intraday["recent_low"]:,.2f}</b></span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-        st.line_chart(df.set_index("time")["close"], height=120, use_container_width=True)
-except Exception:
-    pass
-
 st.divider()
 
 # ---- メイン判定表示 ----
@@ -494,9 +473,9 @@ st.markdown("### 📋 シグナル履歴")
 
 history = _load_history()
 if history:
-    # 新しい順に並べる
     rows = list(reversed(history))
-    for h in rows[:50]:
+    html_items = ""
+    for h in rows[:100]:
         decision   = h.get("decision", "")
         direction  = h.get("direction", "")
         confidence = h.get("confidence", 0)
@@ -507,38 +486,31 @@ if history:
         sig        = h.get("signal_text", "")
 
         if decision == "ENTRY" and direction == "SELL":
-            badge = "🔴 SHORT"
-            color = "#ff4444"
+            badge, color = "🔴 SHORT", "#ff4444"
         elif decision == "ENTRY" and direction == "BUY":
-            badge = "🟢 LONG"
-            color = "#00cc44"
+            badge, color = "🟢 LONG", "#00cc44"
         elif decision == "WAIT":
-            badge = "⏳ WAIT"
-            color = "#aaaaaa"
+            badge, color = "⏳ WAIT", "#aaaaaa"
         else:
-            badge = "⚫ SKIP"
-            color = "#555555"
+            badge, color = "⚫ SKIP", "#555555"
 
-        filter_tag = "" if passed else " <span style='color:#555;font-size:11px;'>（フィルター除外）</span>"
+        filter_tag = "" if passed else "<span style='color:#444;font-size:11px;'>（除外）</span>"
 
-        st.markdown(
-            f"""<div style="border-left:3px solid {color}; padding:6px 12px; margin:4px 0;
-                background:#0e0e1a; border-radius:4px; font-family:monospace;">
-              <span style="color:#666; font-size:12px;">{ts}</span>
-              &nbsp;&nbsp;
-              <span style="color:{color}; font-weight:700;">{badge}</span>
-              &nbsp;
-              <span style="color:#aaa; font-size:12px;">確信度:{confidence}%</span>
-              &nbsp;
-              <span style="color:#f5c842; font-size:12px;">{pips:+.0f}pips</span>
-              &nbsp;
-              <span style="color:#555; font-size:11px;">{ch}</span>
-              {filter_tag}
-              <br>
-              <span style="color:#777; font-size:12px;">{sig}</span>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+        html_items += f"""
+        <div style="border-left:3px solid {color}; padding:6px 12px; margin:4px 0;
+                    background:#0e0e1a; border-radius:4px; font-family:monospace;">
+          <span style="color:#666;font-size:12px;">{ts}</span>&nbsp;&nbsp;
+          <span style="color:{color};font-weight:700;">{badge}</span>&nbsp;
+          <span style="color:#aaa;font-size:12px;">確信度:{confidence}%</span>&nbsp;
+          <span style="color:#f5c842;font-size:12px;">{pips:+.0f}pips</span>&nbsp;
+          <span style="color:#555;font-size:11px;">{ch}</span>{filter_tag}
+          <br><span style="color:#777;font-size:12px;">{sig}</span>
+        </div>"""
+
+    st.markdown(
+        f'<div style="height:400px; overflow-y:auto; padding-right:4px;">{html_items}</div>',
+        unsafe_allow_html=True,
+    )
 else:
     st.markdown("<div style='color:#555; padding:20px;'>まだシグナル履歴がありません</div>",
                 unsafe_allow_html=True)
