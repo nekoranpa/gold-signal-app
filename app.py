@@ -235,20 +235,41 @@ def _run_manual(text: str) -> dict:
 # UI
 # ================================================================
 
-# ---- Gold現在価格 ----
+# ---- Gold現在価格（毎秒時刻更新 + 30秒ごと価格更新）----
 try:
     p = get_gold_price()
     color = "#00ff88" if p["change"] >= 0 else "#ff4444"
-    st.markdown(f"""
-    <div style="text-align:center; padding:10px 0 4px; font-family:sans-serif;">
-      <span style="font-size:26px; font-weight:700; color:#f5c842;">金価格</span>
-      <span style="font-size:34px; font-weight:900; color:#fff; margin:0 14px;">${p['price']:,.2f}</span>
-      <span style="font-size:20px; color:{color};">{p['change']:+,.2f} ({p['change_pct']})</span>
-      <span style="font-size:13px; color:#666; margin-left:10px;">GC=F / {datetime.now().strftime('%H:%M')}</span>
-    </div>""", unsafe_allow_html=True)
+    change_str = f"{p['change']:+,.2f} ({p['change_pct']})"
+    price_str  = f"${p['price']:,.2f}"
 except Exception:
-    st.markdown("<div style='text-align:center;color:#666;padding:8px'>価格取得中...</div>",
-                unsafe_allow_html=True)
+    color = "#666"
+    change_str = ""
+    price_str  = "---"
+
+st.markdown(f"""
+<div style="text-align:center; padding:10px 0 4px; font-family:sans-serif;">
+  <span style="font-size:26px; font-weight:700; color:#f5c842;">金価格</span>
+  <span id="gold-price" style="font-size:34px; font-weight:900; color:#fff; margin:0 14px;">{price_str}</span>
+  <span style="font-size:20px; color:{color};">{change_str}</span>
+  <span style="font-size:13px; color:#666; margin-left:10px;">GC=F /
+    <span id="gold-clock">--:--:--</span>
+  </span>
+</div>
+<script>
+(function() {{
+  function updateClock() {{
+    var now = new Date();
+    var h = String(now.getHours()).padStart(2,'0');
+    var m = String(now.getMinutes()).padStart(2,'0');
+    var s = String(now.getSeconds()).padStart(2,'0');
+    var el = document.getElementById('gold-clock');
+    if (el) el.textContent = h + ':' + m + ':' + s;
+  }}
+  setInterval(updateClock, 1000);
+  updateClock();
+}})();
+</script>
+""", unsafe_allow_html=True)
 
 st.divider()
 
