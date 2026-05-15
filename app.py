@@ -381,6 +381,59 @@ if data and "result" in data:
               ⚠️ {risk}
             </div>""", unsafe_allow_html=True)
 
+        # ---- リアルタイム監視バッジ ----
+        monitoring_until_str = data.get("monitoring_until", "")
+        if monitoring_until_str:
+            try:
+                from datetime import datetime as _dt
+                until_dt = _dt.strptime(monitoring_until_str, "%Y-%m-%d %H:%M:%S")
+                remaining = int((until_dt - _dt.now()).total_seconds())
+                if remaining > 0:
+                    # 現在価格 vs 予測方向で可能性を判定
+                    try:
+                        cur_price = get_gold_price()["price"]
+                    except Exception:
+                        cur_price = None
+
+                    possible = None
+                    reason = ""
+                    if cur_price and price_lv:
+                        diff = cur_price - price_lv
+                        if direction == "SELL":
+                            possible = diff >= -8
+                            reason = (f"現在${cur_price:,.1f} / 目標${price_lv:,.0f} → "
+                                      ("まだエントリー圏内" if possible else "価格が下がりすぎ・チャンス逃し"))
+                        elif direction == "BUY":
+                            possible = diff <= 8
+                            reason = (f"現在${cur_price:,.1f} / 目標${price_lv:,.0f} → "
+                                      ("まだエントリー圏内" if possible else "価格が上がりすぎ・チャンス逃し"))
+                        else:
+                            possible = None
+                            reason = "方向性不明のため判定不可"
+                    elif cur_price and not price_lv:
+                        possible = True
+                        reason = f"価格水準未設定 / 現在${cur_price:,.1f}"
+
+                    if possible is True:
+                        badge_bg, badge_fg, badge_txt = "#1a1500", "#f5c842", "🟡 可能性あり・監視中"
+                    elif possible is False:
+                        badge_bg, badge_fg, badge_txt = "#111118", "#555555", "⚫ スルー（条件不一致）"
+                    else:
+                        badge_bg, badge_fg, badge_txt = "#0e1a0e", "#888888", "⏳ 監視中"
+
+                    mins, secs = divmod(remaining, 60)
+                    st.markdown(f"""
+                    <div style="background:{badge_bg}; border:2px solid {badge_fg};
+                                border-radius:14px; padding:16px 24px; margin:16px 0; text-align:center;">
+                      <div style="font-size:28px; font-weight:900; color:{badge_fg};">{badge_txt}</div>
+                      <div style="font-size:14px; color:#888; margin-top:6px;">{reason}</div>
+                      <div style="font-size:13px; color:#555; margin-top:4px;">
+                        残り監視時間: <span style="color:{badge_fg}; font-weight:700;">{mins}分{secs:02d}秒</span>
+                      </div>
+                    </div>""", unsafe_allow_html=True)
+            except Exception:
+                pass
+
         # ---- 3アナリスト議論パネル ----
         aa = r.get("analyst_a", {})
         ab = r.get("analyst_b", {})
@@ -451,6 +504,9 @@ with col_manual:
                 try:
                     result = _run_manual(manual_text)
                     import uuid
+                    from datetime import timedelta as _td
+                    _hold = result.get("hold_seconds", 300)
+                    _until = (datetime.now() + _td(seconds=_hold)).strftime("%Y-%m-%d %H:%M:%S")
                     save_data = {
                         "id": str(uuid.uuid4()),
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -458,6 +514,7 @@ with col_manual:
                         "author": "手動入力",
                         "channel": "-",
                         "result": result,
+                        "monitoring_until": _until,
                     }
                     # ローカル保存
                     try:

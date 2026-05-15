@@ -206,6 +206,10 @@ def _save_result(signal_text: str, author: str, channel: str, result: dict):
     _append_history(history_entry)
 
     # 全シグナルをメイン表示用に保存（判定・理由を常に表示するため）
+    from datetime import timedelta
+    hold_secs = result.get("hold_seconds", 300)
+    monitoring_until = (datetime.now() + timedelta(seconds=hold_secs)).strftime("%Y-%m-%d %H:%M:%S")
+
     data = {
         "id": str(uuid.uuid4()),
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -214,6 +218,7 @@ def _save_result(signal_text: str, author: str, channel: str, result: dict):
         "channel": channel,
         "result": result,
         "passed_filter": passed,
+        "monitoring_until": monitoring_until,
     }
     with open(RESULT_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
