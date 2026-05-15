@@ -6,7 +6,7 @@ from datetime import datetime
 import streamlit as st
 from dotenv import load_dotenv
 
-from utils.market_data import get_gold_price
+from utils.market_data import get_gold_price, get_gold_intraday, build_market_summary
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
 
@@ -309,7 +309,19 @@ st.divider()
 # ---- メイン判定表示 ----
 data = _load_result()
 
+# 監視ウィンドウが終了していたら待機画面に戻す
+_signal_active = False
 if data and "result" in data:
+    _mu = data.get("monitoring_until", "")
+    if _mu:
+        try:
+            _signal_active = datetime.now() < datetime.strptime(_mu, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            _signal_active = True
+    else:
+        _signal_active = True  # monitoring_until 未設定の古いデータはそのまま表示
+
+if _signal_active and data and "result" in data:
     r = data["result"]
 
     if "error" in r:
@@ -327,10 +339,26 @@ if data and "result" in data:
         passed       = data.get("passed_filter", decision == "ENTRY" and conf >= 80)
         hold_secs    = r.get("hold_seconds", 300)
         source_type  = r.get("source_type", data.get("channel", ""))
+        recv_time    = data.get("timestamp", "")
 
         # 保持秒数を JS が読み取れる要素として埋め込む
         st.markdown(f'<div id="signal-hold-secs" data-secs="{hold_secs}" style="display:none"></div>',
                     unsafe_allow_html=True)
+
+        # ---- 通知受信バナー ----
+        st.markdown(f"""
+        <div style="background:#0a0a1a; border:1px solid #334; border-radius:10px;
+                    padding:10px 20px; margin-bottom:14px; display:flex;
+                    align-items:center; gap:16px; flex-wrap:wrap;">
+          <span style="font-size:22px;">📡</span>
+          <span style="color:#888; font-size:13px;">シグナル受信</span>
+          <span style="color:#fff; font-size:18px; font-weight:700;">{recv_time}</span>
+          <span style="background:#1a1a33; color:#aaf; font-size:13px;
+                       padding:3px 10px; border-radius:20px;">{source_type}</span>
+          <span style="color:#666; font-size:12px; margin-left:auto;">
+            {data.get('signal_text','')[:60]}
+          </span>
+        </div>""", unsafe_allow_html=True)
 
         if decision == "ENTRY" and direction == "SELL":
             bg, fg, emoji, label = "#1a0808", "#ff3333", "🔴", "SHORT エントリー"
@@ -474,17 +502,42 @@ if data and "result" in data:
                     unsafe_allow_html=True)
 
 else:
-    # 待機画面
+    # ---- 待機画面：ライブチャート＋相場分析 ----
     st.markdown("""
-    <div style="text-align:center; padding:80px 0;">
-      <div style="font-size:80px;">🪙</div>
-      <div style="font-size:38px; font-weight:700; color:#fff; margin-top:16px;">
-        Gold Signal Analyzer
-      </div>
-      <div style="font-size:18px; color:#666; margin-top:12px;">
-        Discord シグナル待機中... （5秒ごとに自動更新）
-      </div>
+    <div style="text-align:center; padding:20px 0 10px;">
+      <span style="font-size:18px; color:#666;">📡 シグナル待機中...</span>
+      <span style="font-size:13px; color:#444; margin-left:12px;">（5秒ごと自動更新）</span>
     </div>""", unsafe_allow_html=True)
+
+    # ライブチャート
+    try:
+        import pandas as pd
+        intraday = get_gold_intraday()
+        candles  = intraday.get("candles", [])
+        if candles:
+            df = pd.DataFrame(list(reversed(candles))).set_index("time")
+            trend_c = "#00ff88" if intraday["trend"] == "上昇" else "#ff4444"
+            col_t1, col_t2, col_t3 = st.columns(3)
+            col_t1.metric("直近トレンド", intraday["trend"],
+                          delta_color="normal" if intraday["trend"]=="上昇" else "inverse")
+            col_t2.metric("直近高値", f"${intraday['recent_high']:,.2f}")
+            col_t3.metric("直近安値",  f"${intraday['recent_low']:,.2f}")
+            st.line_chart(df["close"], height=180, use_container_width=True)
+    except Exception:
+        pass
+
+    # 相場サマリー
+    try:
+        summary = build_market_summary()
+        lines = [l for l in summary.split("\n") if l.strip() and "【" not in l]
+        st.markdown(
+            "<div style='background:#0e0e1a; border-radius:10px; padding:14px 20px; "
+            "font-family:monospace; font-size:13px; color:#888; line-height:1.9;'>"
+            + "<br>".join(lines) + "</div>",
+            unsafe_allow_html=True
+        )
+    except Exception:
+        pass
 
 # ---- 手動入力 & LINE学習 ----
 st.divider()
