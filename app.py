@@ -201,17 +201,42 @@ def _run_manual(text: str) -> dict:
     from utils.market_data import build_market_summary
     market = build_market_summary()
 
-    system = """あなたはゴールド（XAU/USD）の専門トレードアナリストです。
-必ず以下のJSON形式のみで回答してください：
+    system = """あなたはゴールド（XAU/USD）取引の専門チームです。
+以下の3つの役割を演じて、シグナルを分析・議論してください：
+
+【アナリストA: 強気派】エントリー機会を積極的に探し、上昇・下落の勢いを重視する
+【アナリストB: 慎重派】リスクと失敗パターンを重視し、見送り理由を探す
+【アナリストC: リスク管理者】損益比率・タイミング・資金管理を最優先する
+
+3人が議論した上でコンセンサスを出してください。
+必ず以下のJSON形式のみで回答：
 {
-  "direction": "BUY" | "SELL" | "NEUTRAL",
-  "price_level": 価格数値 or null,
-  "entry_decision": "ENTRY" | "WAIT" | "SKIP",
-  "entry_timing": "エントリータイミングの説明（日本語）",
-  "predicted_pips": 予想pips数値（下落予想はマイナス、上昇はプラス）,
-  "confidence": 0〜100の確信度,
-  "reasoning": "判断理由（日本語、200字以内）",
-  "risk_note": "リスク注意点（日本語、100字以内）"
+  "analyst_a": {
+    "stance": "BUY" | "SELL" | "NEUTRAL",
+    "reasoning": "根拠（日本語60字以内）",
+    "confidence": 0〜100
+  },
+  "analyst_b": {
+    "stance": "BUY" | "SELL" | "NEUTRAL",
+    "reasoning": "根拠（日本語60字以内）",
+    "confidence": 0〜100
+  },
+  "analyst_c": {
+    "stance": "ENTRY" | "WAIT" | "SKIP",
+    "reasoning": "根拠（日本語60字以内）",
+    "confidence": 0〜100
+  },
+  "consensus": {
+    "direction": "BUY" | "SELL" | "NEUTRAL",
+    "entry_decision": "ENTRY" | "WAIT" | "SKIP",
+    "entry_timing": "エントリータイミング（日本語）",
+    "predicted_pips": 予想pips数値,
+    "confidence": 0〜100,
+    "reasoning": "コンセンサス根拠（日本語200字以内）",
+    "risk_note": "リスク注意点（日本語100字以内）",
+    "price_level": 価格数値 or null,
+    "vote": "例: 2-1でエントリー賛成"
+  }
 }"""
     learning = _load_learning_context()
     user_msg = f"【シグナル】\n{text}\n\n{market}\n\n{learning}\n\nJSONで回答してください。"
@@ -228,7 +253,17 @@ def _run_manual(text: str) -> dict:
         raw = raw.split("```json")[1].split("```")[0].strip()
     elif "```" in raw:
         raw = raw.split("```")[1].split("```")[0].strip()
-    return json.loads(raw)
+    result = json.loads(raw)
+    c = result.get("consensus", {})
+    result["entry_decision"] = c.get("entry_decision", "WAIT")
+    result["direction"]      = c.get("direction", "NEUTRAL")
+    result["price_level"]    = c.get("price_level")
+    result["entry_timing"]   = c.get("entry_timing", "")
+    result["predicted_pips"] = c.get("predicted_pips", 0)
+    result["confidence"]     = c.get("confidence", 0)
+    result["reasoning"]      = c.get("reasoning", "")
+    result["risk_note"]      = c.get("risk_note", "")
+    return result
 
 
 # ================================================================
@@ -338,6 +373,40 @@ if data and "result" in data:
                         padding:12px 20px; margin-top:14px; color:#ffbb44;">
               ⚠️ {risk}
             </div>""", unsafe_allow_html=True)
+
+        # ---- 3アナリスト議論パネル ----
+        aa = r.get("analyst_a", {})
+        ab = r.get("analyst_b", {})
+        ac = r.get("analyst_c", {})
+        vote = r.get("consensus", {}).get("vote", "")
+        if aa or ab or ac:
+            def _stance_color(s):
+                return "#00cc44" if s in ("BUY","ENTRY") else "#ff4444" if s in ("SELL",) else "#888888"
+
+            st.markdown("<div style='margin-top:18px;color:#666;font-size:13px;'>━━ 3アナリスト議論 ━━</div>",
+                        unsafe_allow_html=True)
+            ca, cb, cc = st.columns(3)
+            for col, label, icon, analyst in [
+                (ca, "アナリストA 強気派", "📈", aa),
+                (cb, "アナリストB 慎重派", "🛡️", ab),
+                (cc, "アナリストC リスク管理", "⚖️", ac),
+            ]:
+                stance = analyst.get("stance", "-")
+                sc = _stance_color(stance)
+                with col:
+                    st.markdown(f"""
+                    <div style="background:#0e0e1a; border:1px solid #333; border-radius:10px; padding:14px;">
+                      <div style="color:#888;font-size:12px;">{icon} {label}</div>
+                      <div style="color:{sc};font-size:22px;font-weight:900;margin:6px 0;">{stance}</div>
+                      <div style="color:#aaa;font-size:11px;">{analyst.get('confidence',0)}%</div>
+                      <div style="color:#777;font-size:12px;margin-top:6px;line-height:1.5;">
+                        {analyst.get('reasoning','')}
+                      </div>
+                    </div>""", unsafe_allow_html=True)
+
+            if vote:
+                st.markdown(f"<div style='text-align:center;color:#f5c842;font-size:14px;"
+                            f"margin-top:10px;'>🗳️ {vote}</div>", unsafe_allow_html=True)
 
         st.markdown(f"<div style='color:#555; font-size:12px; margin-top:12px; text-align:right;'>"
                     f"シグナル受信: {data.get('timestamp','')} ／ "
