@@ -6,7 +6,7 @@ from datetime import datetime
 import streamlit as st
 from dotenv import load_dotenv
 
-from utils.market_data import get_gold_price
+from utils.market_data import get_gold_price, get_gold_intraday
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
 
@@ -249,6 +249,27 @@ try:
 except Exception:
     st.markdown("<div style='text-align:center;color:#666;padding:8px'>価格取得中...</div>",
                 unsafe_allow_html=True)
+
+# ---- ミニチャート（1時間足） ----
+try:
+    import pandas as pd
+    intraday = get_gold_intraday()
+    candles = intraday.get("candles", [])
+    if candles:
+        df = pd.DataFrame(reversed(candles))
+        trend_color = "#00ff88" if intraday["trend"] == "上昇" else "#ff4444"
+        st.markdown(
+            f'<div style="display:flex; gap:24px; justify-content:center; '
+            f'font-family:sans-serif; font-size:13px; color:#888; margin-bottom:4px;">'
+            f'<span>直近トレンド: <b style="color:{trend_color}">{intraday["trend"]}</b></span>'
+            f'<span>高値: <b style="color:#fff">${intraday["recent_high"]:,.2f}</b></span>'
+            f'<span>安値: <b style="color:#fff">${intraday["recent_low"]:,.2f}</b></span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.line_chart(df.set_index("time")["close"], height=120, use_container_width=True)
+except Exception:
+    pass
 
 st.divider()
 
