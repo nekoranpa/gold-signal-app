@@ -1,0 +1,15 @@
+# 機密情報（絶対にGitHubにあげない）
+.env
+service_account.json
+
+# 実行時データ（ローカルのみ）
+latest_result.json
+signal_history.json
+learning_data.json
+signal_queue.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store

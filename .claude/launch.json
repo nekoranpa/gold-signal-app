@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "gold-signal-app",
+      "runtimeExecutable": "/Users/hiroshiarakawa/Library/Python/3.9/bin/streamlit",
+      "runtimeArgs": ["run", "app.py", "--server.port", "8501"],
+      "port": 8501
+    }
+  ]
+}
