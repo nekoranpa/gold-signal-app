@@ -6,7 +6,7 @@ from datetime import datetime
 import streamlit as st
 from dotenv import load_dotenv
 
-from utils.market_data import get_gold_price
+from utils.market_data import get_gold_price, get_gold_price_via_claude
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
 
@@ -235,9 +235,19 @@ def _run_manual(text: str) -> dict:
 # UI
 # ================================================================
 
-# ---- Gold現在価格（毎秒時刻更新 + 30秒ごと価格更新）----
+# ---- Gold現在価格（Claude Web検索 → Yahoo Finance フォールバック、30秒キャッシュ）----
+@st.cache_data(ttl=30)
+def _fetch_gold_price():
+    api_key = _get_secret("ANTHROPIC_API_KEY")
+    if api_key:
+        try:
+            return get_gold_price_via_claude(api_key), "Claude"
+        except Exception:
+            pass
+    return get_gold_price(), "Yahoo"
+
 try:
-    p = get_gold_price()
+    p, src = _fetch_gold_price()
     color = "#00ff88" if p["change"] >= 0 else "#ff4444"
     change_str = f"{p['change']:+,.2f} ({p['change_pct']})"
     price_str  = f"${p['price']:,.2f}"
@@ -245,13 +255,14 @@ except Exception:
     color = "#666"
     change_str = ""
     price_str  = "---"
+    src = ""
 
 st.markdown(f"""
 <div style="text-align:center; padding:10px 0 4px; font-family:sans-serif;">
   <span style="font-size:26px; font-weight:700; color:#f5c842;">金価格</span>
   <span id="gold-price" style="font-size:34px; font-weight:900; color:#fff; margin:0 14px;">{price_str}</span>
   <span style="font-size:20px; color:{color};">{change_str}</span>
-  <span style="font-size:13px; color:#666; margin-left:10px;">GC=F /
+  <span style="font-size:13px; color:#666; margin-left:10px;">XAU/USD via {src} /
     <span id="gold-clock">--:--:--</span>
   </span>
 </div>

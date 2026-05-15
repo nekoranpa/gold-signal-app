@@ -1,9 +1,45 @@
+import re
+import json
 import requests
 import datetime
 
 # Yahoo Finance は無料・APIキー不要で Gold 先物（GC=F）を取得できる
 YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+
+def get_gold_price_via_claude(api_key: str) -> dict:
+    """Claude Web検索で金価格を取得"""
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+    msg = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=256,
+        tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 1}],
+        messages=[{"role": "user", "content":
+            "現在のXAU/USD金スポット価格を調べて、このJSON形式のみで答えてください（他のテキスト不要）："
+            '{"price": 数値, "change": 前日比数値, "change_pct": "+0.00%"}'}],
+    )
+    for block in msg.content:
+        if hasattr(block, "text") and block.text.strip():
+            raw = block.text.strip()
+            if "```" in raw:
+                raw = raw.split("```")[1].split("```")[0].replace("json", "").strip()
+            m = re.search(r"\{[^}]+\}", raw)
+            if m:
+                d = json.loads(m.group())
+                price = float(d.get("price", 0))
+                change = float(d.get("change", 0))
+                change_pct = str(d.get("change_pct", f"{change/price*100:+.2f}%"))
+                return {
+                    "price": round(price, 2),
+                    "bid": round(price - 0.3, 2),
+                    "ask": round(price + 0.3, 2),
+                    "change": round(change, 2),
+                    "change_pct": change_pct,
+                    "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                }
+    raise ValueError("Claude から金価格を取得できませんでした")
 
 
 def get_gold_price(api_key: str = None) -> dict:
