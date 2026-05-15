@@ -20,6 +20,44 @@ def _get_secret(key: str, default: str = "") -> str:
 RESULT_FILE  = Path(__file__).parent / "latest_result.json"
 HISTORY_FILE = Path(__file__).parent / "signal_history.json"
 
+
+@st.cache_resource
+def _get_sheets_client():
+    """Google Sheets クライアント（Streamlit Secrets → ローカルファイルの順で取得）"""
+    try:
+        from utils.drive import _client_from_dict
+        sa_dict = dict(st.secrets["gcp_service_account"])
+        return _client_from_dict(sa_dict)
+    except Exception:
+        pass
+    try:
+        sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "service_account.json")
+        sa_path = Path(__file__).parent / sa_json
+        if sa_path.exists():
+            from utils.drive import _client
+            return _client(str(sa_path))
+    except Exception:
+        pass
+    return None
+
+
+@st.cache_data(ttl=5)
+def _load_result_from_sheets(sheet_id: str):
+    gc = _get_sheets_client()
+    if gc is None:
+        return None
+    from utils.drive import load_latest_result
+    return load_latest_result(gc, sheet_id)
+
+
+@st.cache_data(ttl=5)
+def _load_history_from_sheets(sheet_id: str):
+    gc = _get_sheets_client()
+    if gc is None:
+        return []
+    from utils.drive import load_signal_history
+    return load_signal_history(gc, sheet_id)
+
 st.set_page_config(
     page_title="Gold Signal",
     page_icon="🪙",
@@ -83,6 +121,10 @@ def _load_result():
     if RESULT_FILE.exists():
         with open(RESULT_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
+    # Streamlit Cloud: Google Sheets から読み込み
+    sheet_id = _get_secret("GOOGLE_SHEET_ID")
+    if sheet_id:
+        return _load_result_from_sheets(sheet_id)
     return None
 
 
@@ -90,12 +132,15 @@ def _load_history():
     if HISTORY_FILE.exists():
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
+    # Streamlit Cloud: Google Sheets から読み込み
+    sheet_id = _get_secret("GOOGLE_SHEET_ID")
+    if sheet_id:
+        return _load_history_from_sheets(sheet_id)
     return []
 
 
 def _append_history(signal_text: str, result: dict, source: str = "手動"):
-    history = _load_history()
-    history.append({
+    entry = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "signal_text": signal_text[:120],
         "channel": source,
@@ -104,10 +149,30 @@ def _append_history(signal_text: str, result: dict, source: str = "手動"):
         "confidence": result.get("confidence", 0),
         "predicted_pips": result.get("predicted_pips", 0),
         "passed_filter": True,
-    })
-    history = history[-500:]
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
+    }
+    # ローカルファイルに保存
+    try:
+        if HISTORY_FILE.exists():
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        else:
+            history = []
+        history.append(entry)
+        history = history[-500:]
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+    # Google Sheets にも保存
+    sheet_id = _get_secret("GOOGLE_SHEET_ID")
+    if sheet_id:
+        try:
+            gc = _get_sheets_client()
+            if gc:
+                from utils.drive import append_signal_gc
+                append_signal_gc(gc, sheet_id, entry)
+        except Exception:
+            pass
 
 
 # ---- 手動解析 ----
@@ -293,8 +358,24 @@ with col_manual:
                         "channel": "-",
                         "result": result,
                     }
-                    with open(RESULT_FILE, "w", encoding="utf-8") as f:
-                        json.dump(save_data, f, ensure_ascii=False, indent=2)
+                    # ローカル保存
+                    try:
+                        with open(RESULT_FILE, "w", encoding="utf-8") as f:
+                            json.dump(save_data, f, ensure_ascii=False, indent=2)
+                    except Exception:
+                        pass
+                    # Google Sheets に保存（Streamlit Cloud 用）
+                    sheet_id = _get_secret("GOOGLE_SHEET_ID")
+                    if sheet_id:
+                        try:
+                            gc = _get_sheets_client()
+                            if gc:
+                                from utils.drive import save_latest_result
+                                save_latest_result(gc, sheet_id, save_data)
+                                _load_result_from_sheets.clear()
+                                _load_history_from_sheets.clear()
+                        except Exception:
+                            pass
                     _append_history(manual_text, result, "手動入力")
                     st.rerun()
                 except Exception as e:
@@ -366,18 +447,18 @@ with col_line:
                     json.dump(history, f, ensure_ascii=False, indent=2)
 
                 # Google Sheets にも保存
-                sa_json  = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "service_account.json")
-                sheet_id = os.getenv("GOOGLE_SHEET_ID", "")
-                sa_path  = Path(__file__).parent / sa_json
-                if sheet_id and sa_path.exists():
+                sheet_id = _get_secret("GOOGLE_SHEET_ID")
+                if sheet_id:
                     try:
-                        from utils.drive import append_learning
-                        append_learning(str(sa_path), sheet_id, {
-                            **parsed,
-                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "source": "LINE",
-                            "raw_text": line_text,
-                        })
+                        gc = _get_sheets_client()
+                        if gc:
+                            from utils.drive import append_learning_gc
+                            append_learning_gc(gc, sheet_id, {
+                                **parsed,
+                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "source": "LINE",
+                                "raw_text": line_text,
+                            })
                     except Exception as e:
                         st.warning(f"Sheets保存エラー: {e}")
 

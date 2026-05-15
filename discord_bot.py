@@ -155,6 +155,18 @@ def _save_result(signal_text: str, author: str, channel: str, result: dict):
         json.dump(data, f, ensure_ascii=False, indent=2)
     print(f"[Bot] ✅ 表示: {decision} / {direction} / 確信度{confidence}%")
 
+    # Google Sheets の「最新シグナル」にも保存（Streamlit Cloud 用）
+    sa_json_  = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "service_account.json")
+    sheet_id_ = os.getenv("GOOGLE_SHEET_ID", "")
+    sa_path_  = Path(__file__).parent / sa_json_
+    if sheet_id_ and sa_path_.exists():
+        try:
+            from utils.drive import _client, save_latest_result
+            gc = _client(str(sa_path_))
+            save_latest_result(gc, sheet_id_, data)
+        except Exception as e:
+            print(f"[Bot] Sheets最新シグナル保存エラー: {e}")
+
 
 intents = discord.Intents.default()
 intents.message_content = True
