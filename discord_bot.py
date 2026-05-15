@@ -125,7 +125,9 @@ def _save_result(signal_text: str, author: str, channel: str, result: dict):
     confidence = result.get("confidence", 0)
     direction  = result.get("direction", "")
 
-    # 履歴には全件記録（フィルター前）
+    passed = decision == "ENTRY" and confidence >= CONFIDENCE_THRESHOLD
+
+    # 履歴に全件記録（reasoning・risk_noteも保存）
     history_entry = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "signal_text": signal_text[:120],
@@ -134,15 +136,13 @@ def _save_result(signal_text: str, author: str, channel: str, result: dict):
         "direction": direction,
         "confidence": confidence,
         "predicted_pips": result.get("predicted_pips", 0),
-        "passed_filter": decision == "ENTRY" and confidence >= CONFIDENCE_THRESHOLD,
+        "passed_filter": passed,
+        "reasoning": result.get("reasoning", ""),
+        "risk_note": result.get("risk_note", ""),
     }
     _append_history(history_entry)
 
-    # ノイズフィルター: ENTRY かつ確信度80%以上のみ latest_result に保存
-    if decision != "ENTRY" or confidence < CONFIDENCE_THRESHOLD:
-        print(f"[Bot] フィルター除外: {decision} / 確信度{confidence}% → 履歴のみ記録")
-        return
-
+    # 全シグナルをメイン表示用に保存（判定・理由を常に表示するため）
     data = {
         "id": str(uuid.uuid4()),
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -150,10 +150,11 @@ def _save_result(signal_text: str, author: str, channel: str, result: dict):
         "author": author,
         "channel": channel,
         "result": result,
+        "passed_filter": passed,
     }
     with open(RESULT_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"[Bot] ✅ 表示: {decision} / {direction} / 確信度{confidence}%")
+    print(f"[Bot] {'✅ ENTRY' if passed else '⚫ ' + decision}: {direction} / 確信度{confidence}%")
 
     # Google Sheets の「最新シグナル」にも保存（Streamlit Cloud 用）
     sa_json_  = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "service_account.json")

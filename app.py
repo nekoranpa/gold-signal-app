@@ -270,12 +270,16 @@ if data and "result" in data:
         risk      = r.get("risk_note", "")
         price_lv  = r.get("price_level")
 
+        passed = data.get("passed_filter", decision == "ENTRY" and conf >= 80)
+
         if decision == "ENTRY" and direction == "SELL":
             bg, fg, emoji, label = "#1a0808", "#ff3333", "🔴", "SHORT エントリー"
         elif decision == "ENTRY" and direction == "BUY":
             bg, fg, emoji, label = "#081a08", "#00dd55", "🟢", "LONG エントリー"
+        elif decision == "WAIT":
+            bg, fg, emoji, label = "#0e0e1a", "#888888", "⏳", "様子見 / WAIT"
         else:
-            bg, fg, emoji, label = "#111118", "#777777", "⚫", "スルー / 様子見"
+            bg, fg, emoji, label = "#0e0e1a", "#555555", "⚫", "スルー / SKIP"
 
         # ---- BIG判定 ----
         st.markdown(f"""
@@ -495,16 +499,24 @@ if history:
             badge, color = "⚫ SKIP", "#555555"
 
         filter_tag = "" if passed else "<span style='color:#444;font-size:11px;'>（除外）</span>"
+        reasoning_text = h.get("reasoning", "")
+        risk_text = h.get("risk_note", "")
+        reason_line = ""
+        if reasoning_text:
+            reason_line = f'<br><span style="color:#888;font-size:12px;">💬 {reasoning_text}</span>'
+        if risk_text:
+            reason_line += f'<br><span style="color:#aa7700;font-size:11px;">⚠️ {risk_text}</span>'
 
         html_items += f"""
-        <div style="border-left:3px solid {color}; padding:6px 12px; margin:4px 0;
-                    background:#0e0e1a; border-radius:4px; font-family:monospace;">
+        <div style="border-left:3px solid {color}; padding:8px 12px; margin:4px 0;
+                    background:#0e0e1a; border-radius:4px; font-family:sans-serif;">
           <span style="color:#666;font-size:12px;">{ts}</span>&nbsp;&nbsp;
           <span style="color:{color};font-weight:700;">{badge}</span>&nbsp;
           <span style="color:#aaa;font-size:12px;">確信度:{confidence}%</span>&nbsp;
           <span style="color:#f5c842;font-size:12px;">{pips:+.0f}pips</span>&nbsp;
           <span style="color:#555;font-size:11px;">{ch}</span>{filter_tag}
-          <br><span style="color:#777;font-size:12px;">{sig}</span>
+          <br><span style="color:#666;font-size:12px;">{sig}</span>
+          {reason_line}
         </div>"""
 
     st.markdown(
