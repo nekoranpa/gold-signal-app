@@ -172,15 +172,17 @@ def _append_history(entry: dict):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
     # Google Sheets に保存
-    sa_json   = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "service_account.json")
-    sheet_id  = os.getenv("GOOGLE_SHEET_ID", "")
-    sa_path   = Path(__file__).parent / sa_json
-    if sheet_id and sa_path.exists():
-        try:
-            from utils.drive import append_signal
-            append_signal(str(sa_path), sheet_id, entry)
-        except Exception as e:
-            print(f"[Bot] Sheets保存エラー: {e}")
+        sheet_id = os.getenv("GOOGLE_SHEET_ID", "")
+        if sheet_id:
+            try:
+                from utils.drive import _client_from_dict
+                import json as _json
+                sa_dict = _json.loads(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "{}"))
+                gc = _client_from_dict(sa_dict)
+                from utils.drive import append_signal_gc
+                append_signal_gc(gc, sheet_id, entry)
+            except Exception as e:
+                print(f"[Bot] Sheets保存エラー: {e}")
 
 
 def _save_result(signal_text: str, author: str, channel: str, result: dict):
