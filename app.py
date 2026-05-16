@@ -685,55 +685,20 @@ st.markdown("### 📋 シグナル履歴")
 history = _load_history()
 if history:
     rows = list(reversed(history))
-    html_items = ""
+    import pandas as pd
+    table_data = []
     for h in rows[:100]:
-        decision   = h.get("decision", "")
-        direction  = h.get("direction", "")
-        confidence = h.get("confidence", 0)
-        pips       = h.get("predicted_pips", 0) or 0
-        passed     = h.get("passed_filter", False)
-        ts         = h.get("timestamp", "")
-        ch         = h.get("channel", "")
-        sig        = h.get("signal_text", "")
-
-        if decision == "ENTRY" and direction == "SELL":
-            badge, color = "🔴 SHORT", "#ff4444"
-        elif decision == "ENTRY" and direction == "BUY":
-            badge, color = "🟢 LONG", "#00cc44"
-        elif decision == "WAIT":
-            badge, color = "⏳ WAIT", "#aaaaaa"
-        else:
-            badge, color = "⚫ SKIP", "#555555"
-
-        filter_tag = "" if passed else "<span style='color:#444;font-size:11px;'>（除外）</span>"
-        reasoning_text = h.get("reasoning", "")
-        risk_text = h.get("risk_note", "")
-        reason_line = ""
-        if reasoning_text:
-            reason_line = f'<br><span style="color:#888;font-size:12px;">💬 {reasoning_text}</span>'
-        if risk_text:
-            reason_line += f'<br><span style="color:#aa7700;font-size:11px;">⚠️ {risk_text}</span>'
-
-        html_items += f"""
-        <div style="border-left:3px solid {color}; padding:8px 12px; margin:4px 0;
-                    background:#0e0e1a; border-radius:4px; font-family:sans-serif;">
-          <span style="color:#666;font-size:12px;">{ts}</span>&nbsp;&nbsp;
-          <span style="color:{color};font-weight:700;">{badge}</span>&nbsp;
-          <span style="color:#aaa;font-size:12px;">確信度:{confidence}%</span>&nbsp;
-          <span style="color:#f5c842;font-size:12px;">{pips:+.0f}pips</span>&nbsp;
-          <span style="color:#555;font-size:11px;">{ch}</span>{filter_tag}
-          <br><span style="color:#666;font-size:12px;">{sig}</span>
-          {reason_line}
-        </div>"""
-
-    st.markdown(
-        f'<div style="height:400px; overflow-y:auto; padding-right:4px;">{html_items}</div>',
-        unsafe_allow_html=True,
-    )
+        table_data.append({
+            "日時": h.get("timestamp", ""),
+            "判定": h.get("decision", "") + " " + h.get("direction", ""),
+            "確信度": str(h.get("confidence", 0)) + "%",
+            "シグナル": h.get("signal_text", "")[:50],
+            "根拠": h.get("reasoning", "")[:80],
+        })
+    if table_data:
+        st.dataframe(pd.DataFrame(table_data), use_container_width=True)
 else:
-    st.markdown("<div style='color:#555; padding:20px;'>まだシグナル履歴がありません</div>",
-                unsafe_allow_html=True)
-
+    st.markdown("<div style='color:#555; padding:20px;'>まだシグナル履歴がありません</div>", unsafe_allow_html=True)
 # ---- サイドバー（管理者ステータスのみ・キー非表示）----
 with st.sidebar:
     st.header("⚙️ システム状態")
