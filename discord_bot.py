@@ -230,13 +230,13 @@ def _save_result(signal_text: str, author: str, channel: str, result: dict):
         sheet_id_ = os.getenv("GOOGLE_SHEET_ID", "")
         if sheet_id_:
             try:
-                from utils.drive import _client_from_dict, save_latest_result
-                import json as _json
-                sa_dict = _json.loads(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "{}"))
-                gc = _client_from_dict(sa_dict)
-                save_latest_result(gc, sheet_id_, data)
+            from utils.drive import _client_from_dict, save_latest_result
+            import json as _json
+            sa_dict = _json.loads(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "{}"))
+            gc = _client_from_dict(sa_dict)
+            save_latest_result(gc, sheet_id_, data)
             except Exception as e:
-                print(f"[Bot] Sheets最新シグナル保存エラー: {e}")
+ print(f"[Bot] Sheets最新シグナル保存エラー: {e}")
 
 intents = discord.Intents.default()
 intents.message_content = True
