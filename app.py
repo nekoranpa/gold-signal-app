@@ -304,9 +304,7 @@ st.markdown(f"""
 </script>
 """, unsafe_allow_html=True)
 
-st.divider()
-
-# ---- メイン判定表示 ----
+# ---- メイン判定表示（金価格直下）----
 data = _load_result()
 
 # 監視ウィンドウが終了していたら待機画面に戻す
@@ -336,83 +334,114 @@ if _signal_active and data and "result" in data:
         risk      = r.get("risk_note", "")
         price_lv  = r.get("price_level")
 
-        passed       = data.get("passed_filter", decision == "ENTRY" and conf >= 80)
-        hold_secs    = r.get("hold_seconds", 300)
-        source_type  = r.get("source_type", data.get("channel", ""))
-        recv_time    = data.get("timestamp", "")
+        hold_secs   = r.get("hold_seconds", 300)
+        source_type = r.get("source_type", data.get("channel", ""))
+        recv_time   = data.get("timestamp", "")
 
         # 保持秒数を JS が読み取れる要素として埋め込む
         st.markdown(f'<div id="signal-hold-secs" data-secs="{hold_secs}" style="display:none"></div>',
                     unsafe_allow_html=True)
 
-        # ---- 通知受信バナー ----
-        st.markdown(f"""
-        <div style="background:#0a0a1a; border:1px solid #334; border-radius:10px;
-                    padding:10px 20px; margin-bottom:14px; display:flex;
-                    align-items:center; gap:16px; flex-wrap:wrap;">
-          <span style="font-size:22px;">📡</span>
-          <span style="color:#888; font-size:13px;">シグナル受信</span>
-          <span style="color:#fff; font-size:18px; font-weight:700;">{recv_time}</span>
-          <span style="background:#1a1a33; color:#aaf; font-size:13px;
-                       padding:3px 10px; border-radius:20px;">{source_type}</span>
-          <span style="color:#666; font-size:12px; margin-left:auto;">
-            {data.get('signal_text','')[:60]}
-          </span>
-        </div>""", unsafe_allow_html=True)
+        # ================================================================
+        # WAIT / SKIP → 薄く小さくスルー表示
+        # ================================================================
+        if decision in ("WAIT", "SKIP"):
+            wait_emoji = "⏳" if decision == "WAIT" else "⚫"
+            wait_label = "様子見" if decision == "WAIT" else "スルー"
+            st.markdown(f"""
+            <div style="background:#0a0a12; border:1px solid #222; border-radius:10px;
+                        padding:8px 18px; margin:6px 0 10px; display:flex;
+                        align-items:center; gap:10px; opacity:0.55;">
+              <span style="font-size:16px;">{wait_emoji}</span>
+              <span style="color:#555; font-size:13px; font-weight:600;">{wait_label} ({decision})</span>
+              <span style="color:#444; font-size:11px; margin-left:6px;">{recv_time}</span>
+              <span style="color:#444; font-size:11px;">｜ 配信信頼度 {conf}%</span>
+              <span style="color:#3a3a4a; font-size:11px; margin-left:auto;">{reasoning[:50] + '…' if len(reasoning) > 50 else reasoning}</span>
+            </div>""", unsafe_allow_html=True)
 
-        if decision == "ENTRY" and direction == "SELL":
-            bg, fg, emoji, label = "#1a0808", "#ff3333", "🔴", "SHORT エントリー"
-        elif decision == "ENTRY" and direction == "BUY":
-            bg, fg, emoji, label = "#081a08", "#00dd55", "🟢", "LONG エントリー"
-        elif decision == "WAIT":
-            bg, fg, emoji, label = "#0e0e1a", "#888888", "⏳", "様子見 / WAIT"
+        # ================================================================
+        # ENTRY → 色付きで目立つ大型カード
+        # ================================================================
         else:
-            bg, fg, emoji, label = "#0e0e1a", "#555555", "⚫", "スルー / SKIP"
+            if direction == "SELL":
+                bg      = "linear-gradient(135deg, #1f0505 0%, #2a0808 100%)"
+                border  = "#ff3333"
+                glow    = "rgba(255,51,51,0.25)"
+                fg      = "#ff4444"
+                badge_bg = "#ff3333"
+                emoji   = "🔴"
+                label   = "ショート エントリー"
+                dir_jp  = "SELL（売り）"
+            else:
+                bg      = "linear-gradient(135deg, #041408 0%, #082010 100%)"
+                border  = "#00dd55"
+                glow    = "rgba(0,221,85,0.25)"
+                fg      = "#00ee66"
+                badge_bg = "#00aa44"
+                emoji   = "🟢"
+                label   = "ロング エントリー"
+                dir_jp  = "BUY（買い）"
 
-        # ---- BIG判定 ----
-        st.markdown(f"""
-        <div style="background:{bg}; border:3px solid {fg}; border-radius:24px;
-                    padding:52px 32px; text-align:center; margin-bottom:20px;">
-          <div style="font-size:88px; line-height:1;">{emoji}</div>
-          <div style="font-size:72px; font-weight:900; color:{fg};
-                      letter-spacing:4px; margin-top:10px;">{label}</div>
-          <div style="font-size:24px; color:#bbb; margin-top:14px;">
-            確信度&nbsp;<span style="color:#fff;font-weight:700;">{conf}%</span>
-            &nbsp;&nbsp;｜&nbsp;&nbsp;
-            予想&nbsp;<span style="color:#f5c842;font-weight:700;">{pips:+.0f} pips</span>
-            {"&nbsp;&nbsp;｜&nbsp;&nbsp;価格水準&nbsp;<span style='color:#fff;font-weight:700;'>$" + f"{price_lv:,.0f}" + "</span>" if price_lv else ""}
-          </div>
-          <div style="font-size:14px; color:#555; margin-top:10px;">
-            📡 {source_type}&nbsp;&nbsp;⏱ {hold_secs//60}分間表示
-          </div>
-        </div>""", unsafe_allow_html=True)
+            ai_comment = reasoning or timing or "AIコメントなし"
 
-        # ---- タイミング・根拠 ----
-        c1, c2 = st.columns(2)
-        with c1:
             st.markdown(f"""
-            <div style="background:#161622; border-radius:12px; padding:20px; height:100%;">
-              <div style="color:#888; font-size:13px; margin-bottom:6px;">⏱ エントリータイミング</div>
-              <div style="color:#fff; font-size:16px; line-height:1.6;">{timing}</div>
-            </div>""", unsafe_allow_html=True)
-        with c2:
-            st.markdown(f"""
-            <div style="background:#161622; border-radius:12px; padding:20px; height:100%;">
-              <div style="color:#888; font-size:13px; margin-bottom:6px;">🧠 判断根拠</div>
-              <div style="color:#fff; font-size:15px; line-height:1.6;">{reasoning}</div>
+            <div style="background:{bg}; border:2px solid {border};
+                        border-radius:20px; padding:28px 32px; margin:8px 0 18px;
+                        box-shadow: 0 0 28px {glow};">
+
+              <!-- 上段：日時 + 配信元 -->
+              <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px; flex-wrap:wrap;">
+                <span style="background:{badge_bg}; color:#fff; font-size:11px; font-weight:700;
+                             padding:3px 12px; border-radius:20px; letter-spacing:1px;">ENTRY</span>
+                <span style="color:#aaa; font-size:13px;">🕐 {recv_time}</span>
+                <span style="color:#666; font-size:12px; background:#111; padding:2px 10px;
+                             border-radius:12px;">📡 {source_type}</span>
+              </div>
+
+              <!-- メイン判定 -->
+              <div style="display:flex; align-items:center; gap:20px; margin-bottom:20px; flex-wrap:wrap;">
+                <span style="font-size:60px; line-height:1;">{emoji}</span>
+                <div>
+                  <div style="font-size:40px; font-weight:900; color:{fg};
+                              letter-spacing:2px; line-height:1.1;">{label}</div>
+                  <div style="font-size:16px; color:#aaa; margin-top:4px;">{dir_jp}</div>
+                </div>
+              </div>
+
+              <!-- 中段：配信信頼度 + pips + 価格水準 -->
+              <div style="display:flex; gap:28px; flex-wrap:wrap; margin-bottom:18px;">
+                <div style="text-align:center;">
+                  <div style="color:#888; font-size:11px; margin-bottom:2px;">配信信頼度</div>
+                  <div style="color:#fff; font-size:28px; font-weight:900;">{conf}<span style="font-size:16px;">%</span></div>
+                </div>
+                <div style="width:1px; background:#333;"></div>
+                <div style="text-align:center;">
+                  <div style="color:#888; font-size:11px; margin-bottom:2px;">予想 pips</div>
+                  <div style="color:#f5c842; font-size:28px; font-weight:900;">{pips:+.0f}</div>
+                </div>
+                {"<div style='width:1px; background:#333;'></div><div style='text-align:center;'><div style='color:#888; font-size:11px; margin-bottom:2px;'>価格水準</div><div style='color:#fff; font-size:22px; font-weight:700;'>$" + f"{price_lv:,.0f}" + "</div></div>" if price_lv else ""}
+              </div>
+
+              <!-- AIコメント -->
+              <div style="background:rgba(0,0,0,0.35); border-left:3px solid {border};
+                          border-radius:8px; padding:12px 16px;">
+                <div style="color:#888; font-size:11px; margin-bottom:5px;">🧠 AIコメント</div>
+                <div style="color:#ddd; font-size:14px; line-height:1.7;">{ai_comment}</div>
+              </div>
+
             </div>""", unsafe_allow_html=True)
 
-        if risk:
-            st.markdown(f"""
-            <div style="background:#1a1100; border:1px solid #ff9900; border-radius:10px;
-                        padding:12px 20px; margin-top:14px; color:#ffbb44;">
-              ⚠️ {risk}
-            </div>""", unsafe_allow_html=True)
+            if risk:
+                st.markdown(f"""
+                <div style="background:#1a1100; border:1px solid #ff9900; border-radius:10px;
+                            padding:12px 20px; margin-bottom:14px; color:#ffbb44;">
+                  ⚠️ {risk}
+                </div>""", unsafe_allow_html=True)
 
-        # ---- リアルタイム監視バッジ ----
-        monitoring_until_str = data.get("monitoring_until", "")
-        if monitoring_until_str:
-            try:
+            # ---- リアルタイム監視バッジ（ENTRY時のみ）----
+            monitoring_until_str = data.get("monitoring_until", "")
+            if monitoring_until_str:
+              try:
                 from datetime import datetime as _dt
                 until_dt = _dt.strptime(monitoring_until_str, "%Y-%m-%d %H:%M:%S")
                 remaining = int((until_dt - _dt.now()).total_seconds())
@@ -459,47 +488,47 @@ if _signal_active and data and "result" in data:
                         残り監視時間: <span style="color:{badge_fg}; font-weight:700;">{mins}分{secs:02d}秒</span>
                       </div>
                     </div>""", unsafe_allow_html=True)
-            except Exception:
+              except Exception:
                 pass
 
-        # ---- 3アナリスト議論パネル ----
-        aa = r.get("analyst_a", {})
-        ab = r.get("analyst_b", {})
-        ac = r.get("analyst_c", {})
-        vote = r.get("consensus", {}).get("vote", "")
-        if aa or ab or ac:
-            def _stance_color(s):
-                return "#00cc44" if s in ("BUY","ENTRY") else "#ff4444" if s in ("SELL",) else "#888888"
+            # ---- 3アナリスト議論パネル（ENTRY時のみ）----
+            aa = r.get("analyst_a", {})
+            ab = r.get("analyst_b", {})
+            ac = r.get("analyst_c", {})
+            vote = r.get("consensus", {}).get("vote", "")
+            if aa or ab or ac:
+                def _stance_color(s):
+                    return "#00cc44" if s in ("BUY","ENTRY") else "#ff4444" if s in ("SELL",) else "#888888"
 
-            st.markdown("<div style='margin-top:18px;color:#666;font-size:13px;'>━━ 3アナリスト議論 ━━</div>",
+                st.markdown("<div style='margin-top:18px;color:#666;font-size:13px;'>━━ 3アナリスト議論 ━━</div>",
+                            unsafe_allow_html=True)
+                ca, cb, cc = st.columns(3)
+                for col, lbl, icon, analyst in [
+                    (ca, "アナリストA 強気派", "📈", aa),
+                    (cb, "アナリストB 慎重派", "🛡️", ab),
+                    (cc, "アナリストC リスク管理", "⚖️", ac),
+                ]:
+                    stance = analyst.get("stance", "-")
+                    sc = _stance_color(stance)
+                    with col:
+                        st.markdown(f"""
+                        <div style="background:#0e0e1a; border:1px solid #333; border-radius:10px; padding:14px;">
+                          <div style="color:#888;font-size:12px;">{icon} {lbl}</div>
+                          <div style="color:{sc};font-size:22px;font-weight:900;margin:6px 0;">{stance}</div>
+                          <div style="color:#aaa;font-size:11px;">{analyst.get('confidence',0)}%</div>
+                          <div style="color:#777;font-size:12px;margin-top:6px;line-height:1.5;">
+                            {analyst.get('reasoning','')}
+                          </div>
+                        </div>""", unsafe_allow_html=True)
+
+                if vote:
+                    st.markdown(f"<div style='text-align:center;color:#f5c842;font-size:14px;"
+                                f"margin-top:10px;'>🗳️ {vote}</div>", unsafe_allow_html=True)
+
+            st.markdown(f"<div style='color:#555; font-size:12px; margin-top:12px; text-align:right;'>"
+                        f"シグナル受信: {data.get('timestamp','')} ／ "
+                        f"{data.get('channel','')} ／ {data.get('author','')}</div>",
                         unsafe_allow_html=True)
-            ca, cb, cc = st.columns(3)
-            for col, label, icon, analyst in [
-                (ca, "アナリストA 強気派", "📈", aa),
-                (cb, "アナリストB 慎重派", "🛡️", ab),
-                (cc, "アナリストC リスク管理", "⚖️", ac),
-            ]:
-                stance = analyst.get("stance", "-")
-                sc = _stance_color(stance)
-                with col:
-                    st.markdown(f"""
-                    <div style="background:#0e0e1a; border:1px solid #333; border-radius:10px; padding:14px;">
-                      <div style="color:#888;font-size:12px;">{icon} {label}</div>
-                      <div style="color:{sc};font-size:22px;font-weight:900;margin:6px 0;">{stance}</div>
-                      <div style="color:#aaa;font-size:11px;">{analyst.get('confidence',0)}%</div>
-                      <div style="color:#777;font-size:12px;margin-top:6px;line-height:1.5;">
-                        {analyst.get('reasoning','')}
-                      </div>
-                    </div>""", unsafe_allow_html=True)
-
-            if vote:
-                st.markdown(f"<div style='text-align:center;color:#f5c842;font-size:14px;"
-                            f"margin-top:10px;'>🗳️ {vote}</div>", unsafe_allow_html=True)
-
-        st.markdown(f"<div style='color:#555; font-size:12px; margin-top:12px; text-align:right;'>"
-                    f"シグナル受信: {data.get('timestamp','')} ／ "
-                    f"{data.get('channel','')} ／ {data.get('author','')}</div>",
-                    unsafe_allow_html=True)
 
 else:
     # ---- 待機画面：ライブチャート＋相場分析 ----
