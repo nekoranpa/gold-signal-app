@@ -206,43 +206,44 @@ def _run_manual(text: str) -> dict:
     except Exception:
         tra_section = ""
 
-    system = f"""あなたはゴールド（XAU/USD）取引の専門チームです。
-以下の3つの役割を演じて、シグナルを分析・議論してください：{tra_section}
-
-【アナリストA: 強気派】エントリー機会を積極的に探し、上昇・下落の勢いを重視する
-【アナリストB: 慎重派】リスクと失敗パターンを重視し、見送り理由を探す
-【アナリストC: リスク管理者】損益比率・タイミング・資金管理を最優先する
-
-3人が議論した上でコンセンサスを出してください。
-必ず以下のJSON形式のみで回答：
-{
-  "analyst_a": {
-    "stance": "BUY" | "SELL" | "NEUTRAL",
-    "reasoning": "根拠（日本語60字以内）",
-    "confidence": 0〜100
-  },
-  "analyst_b": {
-    "stance": "BUY" | "SELL" | "NEUTRAL",
-    "reasoning": "根拠（日本語60字以内）",
-    "confidence": 0〜100
-  },
-  "analyst_c": {
-    "stance": "ENTRY" | "WAIT" | "SKIP",
-    "reasoning": "根拠（日本語60字以内）",
-    "confidence": 0〜100
-  },
-  "consensus": {
-    "direction": "BUY" | "SELL" | "NEUTRAL",
-    "entry_decision": "ENTRY" | "WAIT" | "SKIP",
-    "entry_timing": "エントリータイミング（日本語）",
-    "predicted_pips": 予想pips数値,
-    "confidence": 0〜100,
-    "reasoning": "コンセンサス根拠（日本語200字以内）",
-    "risk_note": "リスク注意点（日本語100字以内）",
-    "price_level": 価格数値 or null,
-    "vote": "例: 2-1でエントリー賛成"
-  }
-}"""
+    system = (
+        "あなたはゴールド（XAU/USD）取引の専門チームです。\n"
+        "以下の3つの役割を演じて、シグナルを分析・議論してください：\n"
+        + tra_section +
+        "\n【アナリストA: 強気派】エントリー機会を積極的に探し、上昇・下落の勢いを重視する\n"
+        "【アナリストB: 慎重派】リスクと失敗パターンを重視し、見送り理由を探す\n"
+        "【アナリストC: リスク管理者】損益比率・タイミング・資金管理を最優先する\n\n"
+        "3人が議論した上でコンセンサスを出してください。\n"
+        '必ず以下のJSON形式のみで回答：\n'
+        '{\n'
+        '  "analyst_a": {\n'
+        '    "stance": "BUY" | "SELL" | "NEUTRAL",\n'
+        '    "reasoning": "根拠（日本語60字以内）",\n'
+        '    "confidence": 0〜100\n'
+        '  },\n'
+        '  "analyst_b": {\n'
+        '    "stance": "BUY" | "SELL" | "NEUTRAL",\n'
+        '    "reasoning": "根拠（日本語60字以内）",\n'
+        '    "confidence": 0〜100\n'
+        '  },\n'
+        '  "analyst_c": {\n'
+        '    "stance": "ENTRY" | "WAIT" | "SKIP",\n'
+        '    "reasoning": "根拠（日本語60字以内）",\n'
+        '    "confidence": 0〜100\n'
+        '  },\n'
+        '  "consensus": {\n'
+        '    "direction": "BUY" | "SELL" | "NEUTRAL",\n'
+        '    "entry_decision": "ENTRY" | "WAIT" | "SKIP",\n'
+        '    "entry_timing": "エントリータイミング（日本語）",\n'
+        '    "predicted_pips": 予想pips数値,\n'
+        '    "confidence": 0〜100,\n'
+        '    "reasoning": "コンセンサス根拠（日本語200字以内）",\n'
+        '    "risk_note": "リスク注意点（日本語100字以内）",\n'
+        '    "price_level": 価格数値 or null,\n'
+        '    "vote": "例: 2-1でエントリー賛成"\n'
+        '  }\n'
+        '}'
+    )
     learning = _load_learning_context()
     user_msg = f"【シグナル】\n{text}\n\n{market}\n\n{learning}\n\nJSONで回答してください。"
 
