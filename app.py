@@ -315,17 +315,30 @@ st.markdown(f"""
 # ---- メイン判定表示（金価格直下）----
 data = _load_result()
 
+# チャンネル別判定ウィンドウ設定
+def _get_window_secs(channel: str) -> int:
+    ch = channel.lower()
+    if "milkay5" in ch:
+        return 300   # 5分
+    return 900       # 15分（milkay/new-milkay）
+
 # 監視ウィンドウが終了していたら待機画面に戻す
 _signal_active = False
+_remaining_secs = 0
+_window_secs = 900
 if data and "result" in data:
+    _ch = data.get("channel", "")
+    _window_secs = _get_window_secs(_ch)
     _mu = data.get("monitoring_until", "")
     if _mu:
         try:
-            _signal_active = datetime.now() < datetime.strptime(_mu, "%Y-%m-%d %H:%M:%S")
+            _until_dt = datetime.strptime(_mu, "%Y-%m-%d %H:%M:%S")
+            _remaining_secs = int((_until_dt - datetime.now()).total_seconds())
+            _signal_active = _remaining_secs > 0
         except Exception:
             _signal_active = True
     else:
-        _signal_active = True  # monitoring_until 未設定の古いデータはそのまま表示
+        _signal_active = True
 
 if _signal_active and data and "result" in data:
     r = data["result"]
@@ -394,24 +407,27 @@ if _signal_active and data and "result" in data:
         # ENTRY → 色付きで目立つ大型カード
         # ================================================================
         else:
+            # 4ドル超え判定
+            _big_signal = abs(pips) >= 400  # pipsが400以上 = 4ドル以上
+
             if direction == "SELL":
-                bg      = "linear-gradient(135deg, #1f0505 0%, #2a0808 100%)"
-                border  = "#ff3333"
-                glow    = "rgba(255,51,51,0.25)"
-                fg      = "#ff4444"
+                bg       = "linear-gradient(135deg, #1f0505 0%, #2a0808 100%)" if not _big_signal else "linear-gradient(135deg, #3a0000 0%, #5a0000 100%)"
+                border   = "#ff3333" if not _big_signal else "#ff0000"
+                glow     = "rgba(255,51,51,0.25)" if not _big_signal else "rgba(255,0,0,0.5)"
+                fg       = "#ff4444" if not _big_signal else "#ff0000"
                 badge_bg = "#ff3333"
-                emoji   = "🔴"
-                label   = "ショート エントリー"
-                dir_jp  = "SELL（売り）"
+                emoji    = "🔴" if not _big_signal else "🚨"
+                label    = "ショート エントリー" if not _big_signal else "🚨 大型 SELL シグナル"
+                dir_jp   = "SELL（売り）"
             else:
-                bg      = "linear-gradient(135deg, #041408 0%, #082010 100%)"
-                border  = "#00dd55"
-                glow    = "rgba(0,221,85,0.25)"
-                fg      = "#00ee66"
+                bg       = "linear-gradient(135deg, #041408 0%, #082010 100%)" if not _big_signal else "linear-gradient(135deg, #003a10 0%, #005a18 100%)"
+                border   = "#00dd55" if not _big_signal else "#00ff44"
+                glow     = "rgba(0,221,85,0.25)" if not _big_signal else "rgba(0,255,68,0.5)"
+                fg       = "#00ee66" if not _big_signal else "#00ff44"
                 badge_bg = "#00aa44"
-                emoji   = "🟢"
-                label   = "ロング エントリー"
-                dir_jp  = "BUY（買い）"
+                emoji    = "🟢" if not _big_signal else "🚀"
+                label    = "ロング エントリー" if not _big_signal else "🚀 大型 BUY シグナル"
+                dir_jp   = "BUY（買い）"
 
             ai_comment = reasoning or timing or "AIコメントなし"
 
@@ -562,27 +578,58 @@ if _signal_active and data and "result" in data:
                         unsafe_allow_html=True)
 
 else:
-    # ---- 待機画面：ライブチャート＋相場分析 ----
+    # ---- 待機画面：MILKAY待機中 + 相場分析 ----
     st.markdown("""
-    <div style="text-align:center; padding:20px 0 10px;">
-      <span style="font-size:18px; color:#666;">📡 シグナル待機中...</span>
-      <span style="font-size:13px; color:#444; margin-left:12px;">（5秒ごと自動更新）</span>
+    <div style="background:linear-gradient(135deg,#0a0a14 0%,#12121e 100%);
+                border:2px solid #2a2a3a; border-radius:20px;
+                padding:28px 32px; margin:8px 0 18px; text-align:center;">
+      <div style="font-size:52px; margin-bottom:8px;">📡</div>
+      <div style="font-size:36px; font-weight:900; color:#4a4a6a;
+                  letter-spacing:3px;">MILKAY 待機中</div>
+      <div style="font-size:13px; color:#444; margin-top:8px;">シグナルを受信するとリアルタイム判定を開始します</div>
     </div>""", unsafe_allow_html=True)
 
-    # ライブチャート
+    # 相場分析（リアルタイム）
     try:
         import pandas as pd
         intraday = get_gold_intraday()
         candles  = intraday.get("candles", [])
+
+        trend     = intraday.get("trend", "不明")
+        hi        = intraday.get("recent_high", 0)
+        lo        = intraday.get("recent_low", 0)
+        rng       = hi - lo if hi and lo else 0
+        trend_col = "#00ff88" if trend == "上昇" else "#ff4444" if trend == "下落" else "#888"
+
+        # トレンド判定バッジ
+        st.markdown(f"""
+        <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px; justify-content:center;">
+          <div style="background:#0e0e1a; border:1px solid {trend_col}; border-radius:12px;
+                      padding:12px 24px; text-align:center;">
+            <div style="color:#666; font-size:11px;">直近トレンド</div>
+            <div style="color:{trend_col}; font-size:26px; font-weight:900;">{trend}</div>
+          </div>
+          <div style="background:#0e0e1a; border:1px solid #333; border-radius:12px;
+                      padding:12px 24px; text-align:center;">
+            <div style="color:#666; font-size:11px;">直近高値 🔺</div>
+            <div style="color:#ff8866; font-size:22px; font-weight:700;">${hi:,.2f}</div>
+          </div>
+          <div style="background:#0e0e1a; border:1px solid #333; border-radius:12px;
+                      padding:12px 24px; text-align:center;">
+            <div style="color:#666; font-size:11px;">直近安値 🔻</div>
+            <div style="color:#66aaff; font-size:22px; font-weight:700;">${lo:,.2f}</div>
+          </div>
+          <div style="background:#0e0e1a; border:1px solid #333; border-radius:12px;
+                      padding:12px 24px; text-align:center;">
+            <div style="color:#666; font-size:11px;">レンジ幅</div>
+            <div style="color:#f5c842; font-size:22px; font-weight:700;">${rng:,.2f}</div>
+          </div>
+        </div>""", unsafe_allow_html=True)
+
         if candles:
             df = pd.DataFrame(list(reversed(candles))).set_index("time")
-            trend_c = "#00ff88" if intraday["trend"] == "上昇" else "#ff4444"
-            col_t1, col_t2, col_t3 = st.columns(3)
-            col_t1.metric("直近トレンド", intraday["trend"],
-                          delta_color="normal" if intraday["trend"]=="上昇" else "inverse")
-            col_t2.metric("直近高値", f"${intraday['recent_high']:,.2f}")
-            col_t3.metric("直近安値",  f"${intraday['recent_low']:,.2f}")
-            st.line_chart(df["close"], height=180, use_container_width=True)
+            st.line_chart(df["close"], height=160, use_container_width=True)
+
     except Exception:
         pass
 
@@ -591,8 +638,8 @@ else:
         summary = build_market_summary()
         lines = [l for l in summary.split("\n") if l.strip() and "【" not in l]
         st.markdown(
-            "<div style='background:#0e0e1a; border-radius:10px; padding:14px 20px; "
-            "font-family:monospace; font-size:13px; color:#888; line-height:1.9;'>"
+            "<div style='background:#0a0a12; border-radius:10px; padding:14px 20px; "
+            "font-family:monospace; font-size:12px; color:#666; line-height:1.9;'>"
             + "<br>".join(lines) + "</div>",
             unsafe_allow_html=True
         )
