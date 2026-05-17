@@ -60,12 +60,13 @@ def append_signal_gc(gc: gspread.Client, sheet_id: str, entry: dict):
 def save_latest_result(gc: gspread.Client, sheet_id: str, data: dict):
     """最新シグナルをGoogle Sheetsに保存（1行のみ上書き）"""
     ss = gc.open_by_key(sheet_id)
+    headers = LATEST_HEADERS + ["monitoring_until"]
     try:
         ws = ss.worksheet("最新シグナル")
         ws.clear()
     except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title="最新シグナル", rows=10, cols=len(LATEST_HEADERS))
-    ws.append_row(LATEST_HEADERS)
+        ws = ss.add_worksheet(title="最新シグナル", rows=10, cols=len(headers))
+    ws.append_row(headers)
     ws.append_row([
         data.get("id", ""),
         data.get("timestamp", ""),
@@ -73,6 +74,7 @@ def save_latest_result(gc: gspread.Client, sheet_id: str, data: dict):
         data.get("author", ""),
         data.get("channel", ""),
         json.dumps(data.get("result", {}), ensure_ascii=False),
+        data.get("monitoring_until", ""),
     ])
 
 
@@ -94,6 +96,7 @@ def load_latest_result(gc: gspread.Client, sheet_id: str):
             "author": row.get("author", ""),
             "channel": row.get("channel", ""),
             "result": result,
+            "monitoring_until": row.get("monitoring_until", ""),
         }
     except Exception:
         return None
